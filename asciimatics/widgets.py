@@ -2184,6 +2184,9 @@ class TextBox(Widget):
             self._column = len(self._value[self._line])
 
     def process_event(self, event):
+        def _join(a, b, c=None):
+                return a.join_colour(b)
+
         if isinstance(event, KeyboardEvent):
             old_value = copy(self._value)
             if event.key_code in [10, 13]:
@@ -2196,9 +2199,9 @@ class TextBox(Widget):
             elif event.key_code == Screen.KEY_BACK:
                 if self._column > 0:
                     # Delete character in front of cursor.
-                    self._value[self._line] = "".join([
+                    self._value[self._line] = _join(
                         self._value[self._line][:self._column - 1],
-                        self._value[self._line][self._column:]])
+                        self._value[self._line][self._column:])
                     self._column -= 1
                 else:
                     if self._line > 0:
@@ -2209,9 +2212,9 @@ class TextBox(Widget):
                             self._value.pop(self._line + 1)
             elif event.key_code == Screen.KEY_DELETE:
                 if self._column < len(self._value[self._line]):
-                    self._value[self._line] = "".join([
+                    self._value[self._line] = _join(
                         self._value[self._line][:self._column],
-                        self._value[self._line][self._column + 1:]])
+                        self._value[self._line][self._column + 1:])
                 else:
                     if self._line < len(self._value) - 1:
                         # Join this line with next
@@ -2267,7 +2270,7 @@ class TextBox(Widget):
                     new_value = []
                     for line in self._value:
                         parser = self._parser()
-                        new_value.append(ColouredText(line, parser))
+                        new_value.append(ColouredText(line, parser, colour_map=line.colour_map if hasattr(line, 'colour_map') else None))
                     self._value = new_value
 
                 self._reflowed_text_cache = None

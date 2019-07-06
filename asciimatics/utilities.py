@@ -58,10 +58,13 @@ class _DotDict(dict):
     __delattr__ = dict.__delitem__
 
 
-class ColouredText(object):
+class ColouredText(str):
     """
     Unicode string-like object to store text and colour maps
     """
+
+    def __new__(cls, text, parser, colour_map=None):
+        return super(ColouredText, cls).__new__(cls, text)
 
     def __init__(self, text, parser, colour_map=None):
         """
@@ -80,7 +83,7 @@ class ColouredText(object):
         """
         Create the colour map for the current text
         """
-        if self._parser is None:
+        if self._parser is None or self._raw_map is not None:
             self._colour_map = self._raw_map
             self._text = self._raw_text
         else:
@@ -98,17 +101,32 @@ class ColouredText(object):
         return len(self._text)
 
     def __getitem__(self, item):
-        return self._text[item]
+        return ColouredText(self._text[item], parser=self._parser, colour_map=self.colour_map[item])
 
     def __add__(self, other):
-        return ColouredText(self._text + str(other), parser=self._parser)
+        if hasattr(other, 'raw_text'):
+            return ColouredText(self._raw_text + str(other.raw_text), parser=self._parser)
+        else:
+            return ColouredText(self._raw_text + str(other), parser=self._parser)
 
     def encode(self, encoding):
         return self._text.encode(encoding)
 
+    def join_colour(self, other):
+        result = ColouredText(self.raw_text, self.parser, colour_map=self.colour_map)
+        return result + other
+
     @property
     def colour_map(self):
         return self._colour_map
+
+    @property
+    def raw_text(self):
+        return self._raw_text
+
+    @property
+    def parser(self):
+        return self._parser
 
 
 class Parser(with_metaclass(ABCMeta, object)):
