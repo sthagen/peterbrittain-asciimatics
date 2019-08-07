@@ -23,6 +23,13 @@ matrix:
     - env: BUILD=test FORCE_TTY=Y
       python: 'pypy'
 
+    - env: BUILD=test FORCE_TTY=Y
+      os: windows
+      python: '2.7'
+    - env: BUILD=test FORCE_TTY=Y
+      os: windows
+      python: '3.5'
+
     - env: BUILD=docs
       python: '3.6'
 
@@ -47,10 +54,6 @@ after_success:
     set -ex
     case "$BUILD" in
       test)
-        mv .coverage .coverage.travis
-        appveyor-artifacts download
-        python coverage_fix.py */.coverage
-        coverage combine .coverage.travis */.coverage
         coveralls
         ;;
     esac
