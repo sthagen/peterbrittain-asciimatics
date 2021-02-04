@@ -75,12 +75,21 @@ class _DoubleBuffer(object):
         """
         width = self._width if w is None else w
         height = self._height if h is None else h
+        width = max(0, min(self._width - x, width))
+        height = max(0, min(self._height - y, height))
         line = [(u" ", fg, attr, bg, 1) for _ in range(width)]
         if x == 0 and y == 0 and w is None and h is None:
             self._double_buffer = [line[:] for _ in range(height)]
         else:
             for i in range(y, y + height):
                 self._double_buffer[i][x:x + w] = line[:]
+
+    def invalidate(self):
+        """
+        Invalidate the screen buffer to force a full refresh.
+        """
+        line = [(None, None, None, None, 1) for _ in range(self._width)]
+        self._screen_buffer = [line[:] for _ in range(self._height)]
 
     def get(self, x, y):
         """
@@ -1709,13 +1718,17 @@ class Screen(with_metaclass(ABCMeta, _AbstractCanvas)):
         """
         return self._scenes[self._scene_index]
 
-    def force_update(self):
+    def force_update(self, full_refresh=False):
         """
         Force the Screen to redraw the current Scene on the next call to
         draw_next_frame, overriding the frame_update_count value for all the
         Effects.
+
+        :param full_refresh: if True force the whole screen to redraw.
         """
         self._forced_update = True
+        if full_refresh:
+            self._buffer.invalidate()
 
     @abstractmethod
     def _change_colours(self, colour, attr, bg):
@@ -2296,6 +2309,9 @@ else:
             self._re_sized = False
             self._signal_state.set(signal.SIGWINCH, self._resize_handler)
 
+            # Set up signal handler for job pause/resume.
+            self._signal_state.set(signal.SIGCONT, self._continue_handler)
+
             # Catch SIGINTs and translated them to ctrl-c if needed.
             if catch_interrupt:
                 # Ignore SIGINT (ctrl-c) and SIGTSTP (ctrl-z) signals.
@@ -2382,6 +2398,13 @@ else:
             curses.endwin()
             curses.initscr()
             self._re_sized = True
+
+        def _continue_handler(self, *_):
+            """
+            Job pause/resume signal handler.  We don't care about any of the
+            parameters passed in beyond the object reference.
+            """
+            self.force_update(full_refresh=True)
 
         def _scroll(self, lines):
             """

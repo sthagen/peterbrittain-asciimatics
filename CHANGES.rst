@@ -3,7 +3,11 @@ CHANGE HISTORY
 
 LATEST
 ------
-- None
+- Added ability to detect job pause/resume and force full screen refresh.
+- Converted widgets to a sub-package.
+- Fixed issue with labels in a layout column preventing buttons from being pressed.
+- Fixed issue with visual overrun on Listboxes when there is a label offset.
+- Fixed issue with TextBox hitting IndexError in double buffers due to lack of clipping.
 
 1.12.0
 ------
