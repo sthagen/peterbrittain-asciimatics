@@ -4,6 +4,8 @@ CHANGE HISTORY
 LATEST
 ------
 - Added AnsiArtPlayer and AsciinemaPlayer
+- Added dynamically sized, animated sprites to ray caster demo.
+- Added fit parameter to DropdownList.
 
 1.13.0
 ------

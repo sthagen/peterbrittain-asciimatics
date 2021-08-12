@@ -11,47 +11,48 @@ env:
 matrix:
   fast_finish: true
   include:
-    - env: BUILD=test FORCE_TTY=Y
+    - name: "2.7 Linux"
+      env: BUILD=test FORCE_TTY=Y
       python: '2.7'
-    - env: BUILD=test FORCE_TTY=Y
+      script: ./noserun.sh
+    - name: "3.5 Linux"
+      env: BUILD=test FORCE_TTY=Y
       python: '3.5'
-    - env: BUILD=test FORCE_TTY=Y
+      script: ./noserun.sh
+    - name: "3.6 Linux"
+      env: BUILD=test FORCE_TTY=Y
       python: '3.6'
-    - env: BUILD=test FORCE_TTY=Y
+      script: ./noserun.sh
+    - name: "3.7 Linux"
+      env: BUILD=test FORCE_TTY=Y
       python: '3.7'
-      dist: xenial
-      sudo: true
-    - env: BUILD=test FORCE_TTY=Y
+      script: ./noserun.sh
+    - name: "pypy Linux"
+      env: BUILD=test FORCE_TTY=Y
       python: 'pypy'
-
-    - env: BUILD=docs
+      script: ./noserun.sh
+    - name: "3.8 Windows"
+      os: windows
+      language: shell       # 'language: python' is an error on Travis CI Windows
+      before_install:
+         - choco install python --version 3.8.0
+         - python -m pip install --upgrade pip
+         - python -m pip install pywin32
+      env: PATH=/c/Python38:/c/Python38/Scripts:$PATH BUILD=test FORCE_TTY=Y
+      script: ./noserun.bat
+    - name: "Docs"
+      env: BUILD=docs
       python: '3.6'
+      script: ./builddocs.sh
 
 install:
   - pip install -r requirements/dev.txt
-
-script:
-  - |
-    set -ex
-    case "$BUILD" in
-      test)
-        nosetests --with-coverage --cover-package=asciimatics
-        ;;
-      docs)
-        cd doc && cp source/conf_orig.py source/conf.py && ./build.sh
-        ;;
-    esac
-    set +ex
 
 after_success:
   - |
     set -ex
     case "$BUILD" in
       test)
-        mv .coverage .coverage.travis
-        appveyor-artifacts download
-        python coverage_fix.py */.coverage
-        coverage combine .coverage.travis */.coverage
         coveralls
         ;;
     esac
