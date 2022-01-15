@@ -6,6 +6,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 from builtins import range
 from copy import copy, deepcopy
+from logging import getLogger
 from wcwidth import wcswidth
 from asciimatics.effects import Effect
 from asciimatics.event import KeyboardEvent, MouseEvent
@@ -13,7 +14,10 @@ from asciimatics.exceptions import Highlander, InvalidFields
 from asciimatics.screen import Screen, Canvas
 from asciimatics.utilities import BoxTool
 from asciimatics.widgets.scrollbar import _ScrollBar
-from asciimatics.widgets.utilities import THEMES, logger
+from asciimatics.widgets.utilities import THEMES
+
+# Logging
+logger = getLogger(__name__)
 
 
 class _BorderManager:
@@ -634,8 +638,7 @@ class Frame(Effect):
                     self._canvas.start_line <= event.y < self._canvas.start_line + self._canvas.height):
                 self._scene.remove_effect(self)
                 self._scene.add_effect(self, reset=False)
-                if not self._has_focus and self._focus < len(self._layouts):
-                    self._layouts[self._focus].focus()
+                # No need to set focus - mouse event processing later will do that.
                 self._has_focus = claimed_focus = True
             else:
                 if self._has_focus and self._focus < len(self._layouts):
@@ -664,6 +667,7 @@ class Frame(Effect):
 
         # Give the current widget in focus first chance to process the event.
         event = self._layouts[self._focus].process_event(event, self._hover_focus)
+        logger.debug("Current widget left event: %s", event)
 
         # If the underlying widgets did not process the event, try processing
         # it now.
@@ -673,13 +677,13 @@ class Frame(Effect):
                     # Move on to next widget.
                     self._layouts[self._focus].blur()
                     self._find_next_tab_stop(1)
-                    self._layouts[self._focus].focus(force_first=True)
+                    # Find next tab stop will have already set the new focus.
                     old_event = None
                 elif event.key_code == Screen.KEY_BACK_TAB:
                     # Move on to previous widget.
                     self._layouts[self._focus].blur()
                     self._find_next_tab_stop(-1)
-                    self._layouts[self._focus].focus(force_last=True)
+                    # Find next tab stop will have already set the new focus.
                     old_event = None
                 if event.key_code == Screen.KEY_DOWN:
                     # Move on to nearest vertical widget in the next Layout
