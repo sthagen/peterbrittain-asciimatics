@@ -117,6 +117,8 @@ class Layout(object):
         force the Frame to recalculate the resulting new overall layout.
         """
         self._columns = [[] for _ in self._columns]
+        self._live_col = 0
+        self._live_widget = -1
 
     def focus(self, force_first=False, force_last=False, force_column=None,
               force_widget=None):
@@ -149,6 +151,8 @@ class Layout(object):
             self._live_col = len(self._columns) - 1
             self._live_widget = len(self._columns[self._live_col])
             self._find_next_widget(-1)
+        if self._live_widget == -1:
+            raise IndexError("No live widgets")
         if (col, wid) != (self._live_col, self._live_widget) or not had_focus:
             self._columns[self._live_col][self._live_widget].focus()
 

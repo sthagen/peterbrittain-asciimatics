@@ -1399,6 +1399,38 @@ class TestWidgets(unittest.TestCase):
             "                                        \n" +
             "                                        \n")
 
+    def test_disabled_layout(self):
+        """
+        Check disabled layout cannot be tabstop.
+        """
+        # Create a dummy screen.
+        screen = MagicMock(spec=Screen, colours=8, unicode_aware=False)
+        scene = MagicMock(spec=Scene)
+        canvas = Canvas(screen, 10, 40, 0, 0)
+
+        # Create the form we want to test.
+        form = Frame(canvas, canvas.height, canvas.width, has_border=False, can_scroll=False)
+        layout = Layout([100])
+        form.add_layout(layout)
+        text_box = TextBox(1, as_string=True)
+        text_box.disabled = True
+        layout.add_widget(text_box)
+        layout2 = Layout([100], fill_frame=True)
+        form.add_layout(layout2)
+        text_box2 = TextBox(1, as_string=True)
+        layout2.add_widget(text_box2)
+        form.fix()
+        form.register_scene(scene)
+        form.reset()
+
+        # Check that input cannot get focus on disabled layout.
+        text_box.value = "A test"
+        text_box2.value = "Another test"
+        self.process_keys(form, ["A", Screen.KEY_TAB, Screen.KEY_UP, "B"])
+        form.save()
+        self.assertEqual(text_box.value, "A test")
+        self.assertEqual(text_box2.value, "Another testAB")
+
     def test_disabled_text(self):
         """
         Check disabled TextBox can be used for pre-formatted output.
@@ -3028,9 +3060,11 @@ class TestWidgets(unittest.TestCase):
             "|                                      |\n" +
             "+--------------------------------------+\n")
 
-        # Check removing widgets clears Frame.
+        # Check removing widgets clears Frame and safely resets focus.
+        self.process_mouse(form, [(0, 0, 0)])
         layout.clear_widgets()
         form.fix()
+        self.process_mouse(form, [(0, 0, 0)])
         scene.reset()
         for effect in scene.effects:
             effect.update(1)
@@ -3048,8 +3082,10 @@ class TestWidgets(unittest.TestCase):
             "+--------------------------------------+\n")
 
         # Check adding another widget now adds it back into the Frame.
+        self.process_mouse(form, [(0, 0, 0)])
         layout.add_widget(Text("Another One"))
         form.fix()
+        self.process_mouse(form, [(0, 0, 0)])
         scene.reset()
         for effect in scene.effects:
             effect.update(2)

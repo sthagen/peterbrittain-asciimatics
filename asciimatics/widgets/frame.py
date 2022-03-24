@@ -227,6 +227,13 @@ class Frame(Effect):
         This function should be called once all Layouts have been added to the Frame and all
         widgets added to the Layouts.
         """
+        # Remove any focus now before we reset...
+        if self._has_focus:
+            try:
+                self._layouts[self._focus].blur()
+            except IndexError:
+                pass
+
         # Do up to 2 passes in case we have a variable height Layout.
         fill_layout = None
         fill_height = y = 0
@@ -263,13 +270,14 @@ class Frame(Effect):
         self._max_height = y
 
         # Reset text
-        while self._focus < len(self._layouts):
-            try:
-                self._layouts[self._focus].focus(force_first=True)
-                break
-            except IndexError:
-                self._focus += 1
-        self._clear()
+        if self._has_focus:
+            while self._focus < len(self._layouts):
+                try:
+                    self._layouts[self._focus].focus(force_first=True)
+                    break
+                except IndexError:
+                    self._focus += 1
+            self._clear()
 
     def _clear(self):
         """
@@ -593,14 +601,20 @@ class Frame(Effect):
                 self._focus = len(self._layouts) - 1
             if self._focus >= len(self._layouts):
                 self._focus = 0
+            logger.debug("Trying tab to layout {}".format(self._focus))
             try:
                 if direction > 0:
                     self._layouts[self._focus].focus(force_first=True)
                 else:
                     self._layouts[self._focus].focus(force_last=True)
-                break
+                return
             except IndexError:
                 self._focus += direction
+        # If we get here, we need to reset the layout focus
+        if direction > 0:
+            self._layouts[self._focus].focus(force_first=True)
+        else:
+            self._layouts[self._focus].focus(force_last=True)
 
     def _switch_to_nearest_vertical_widget(self, direction):
         """
