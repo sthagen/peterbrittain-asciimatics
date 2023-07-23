@@ -418,6 +418,11 @@ second has two 50% width columns and the third consists of 3 columns of relative
 The last actually contains some Widgets in the second column (though this is just for illustration
 purposes as we'd expect most Layouts to have some Widgets in them).
 
+To get spacing between columns, you can just use a small empty column between your active content.
+This size will be proportional to the other columns and so will change as the screen is resized.
+If you want to avoid this resizing, you can use the `gutter` option on the `Layout`, which will
+always provide an exact character count between columns for all screen sizes.
+
 Filling the space
 ~~~~~~~~~~~~~~~~~
 Once you've got the basic rows and columns for your UI sorted, you may want to use some strategic
@@ -706,7 +711,7 @@ Asciimatics uses exceptions to tell the animation engine to move to a new Scene 
    the function that called into the Screen.
 2. :py:obj:`.NextScene` - This exception tells the animation engine to move to a new Scene.  The
    precise Scene is determined by the name passed into the exception.  If none is specified, the
-   engine will simply roundi robin to the next available Scene.
+   engine will simply round robin to the next available Scene.
 
 Note that the above logic requires each Scene to be given a unique name on construction.  For
 example:
@@ -740,7 +745,7 @@ need to do is:
 3. Use that saved reference to the model to handle updates as needed inside your view's callbacks or methods.
 
 For a concrete example of how to do this check out the contact list sample and look at how it defines and uses
-the ``ContactModel``.  Alternatively, the quick_model sample shows how the same forms would work witha simple
+the ``ContactModel``.  Alternatively, the quick_model sample shows how the same forms would work with a simple
 list of dictionaries instead.
 
 Dynamic scenes
