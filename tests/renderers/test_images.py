@@ -28,17 +28,16 @@ class TestRendererImages(unittest.TestCase):
         self.maxDiff = None
         self.assertEqual(
             image,
-            ['',
-             '     sA3h3h3Hr2     ',
-             '  ;:;G#99G@&2;;;r   ',
-             ' .::#9&&@@G;rrrr;;3 ',
+            ['     sA3h3h3Hr2     ',
+             '  ;:;G#99G@&3;;;r   ',
+             ' :::#9&&@@G;rrrr;;3 ',
              '.:;;A&@AAGsssssrr;#H',
-             '.:;;;r29@srssssrr;A2',
+             '::;;;r39@srssssrr;A2',
              '.::;;rrrrr@@@@9;r;;A',
-             's.:;;;;rr2@@@@@@#;; ',
-             ' s.::;;;;;;9&&&3;:  ',
-             '   ..::;;;;9#r::2   ',
-             '      s...r.;       '])
+             's::;;;;rr2@@@@@@#;; ',
+             ' s:::;;;;;;9&&&3;:  ',
+             '   .:::;;;;9#r::2   ',
+             '      s.::r:;       '])
 
     def test_colour_image_file(self):
         """
@@ -74,8 +73,7 @@ class TestRendererImages(unittest.TestCase):
             self.maxDiff = None
             self.assertEqual(
                 image,
-                ['',
-                 '     ##########     ',
+                ['     ##########     ',
                  '  ###############   ',
                  ' ################## ',
                  '####################',
@@ -145,8 +143,7 @@ class TestRendererImages(unittest.TestCase):
             image = next(renderer.images)
             self.assertEqual(
                 image,
-                ['.',
-                 '....▄▄▄▄▄▄▄▄▄▄▄▄.....',
+                ['....▄▄▄▄▄▄▄▄▄▄▄▄.....',
                  '..▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄...',
                  '.▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄..',
                  '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄.',
