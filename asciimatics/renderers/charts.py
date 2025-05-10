@@ -60,6 +60,9 @@ class _BarChartBase(DynamicRenderer):
                 else:
                     raise ValueError("Gradients must be 2-tuple or 3-tuple in size")
 
+    def reset(self):
+        pass
+
     @abstractmethod
     def _render_now(self):
         pass
@@ -173,6 +176,9 @@ class BarChart(_BarChartBase):
         super().__init__(
             height, width, functions, char, colour, bg, gradient, scale, axes, intervals, labels, border,
             keys, gap)
+
+    def _render_all(self):
+        return [self._render_now()]
 
     def _render_now(self):
         int_h, int_w, start_x, start_y = self._setup_chart()
@@ -323,6 +329,9 @@ class VBarChart(_BarChartBase):
         super().__init__(
             height, width, functions, char, colour, bg, gradient, scale, axes, intervals, labels, border,
             keys, gap)
+
+    def _render_all(self):
+        return [self._render_now()]
 
     def _render_now(self):
         int_h, int_w, start_x, start_y = self._setup_chart()

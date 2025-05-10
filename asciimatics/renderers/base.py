@@ -4,9 +4,7 @@ This module provides common code for all Renderers.
 
 from abc import ABCMeta, abstractmethod
 import re
-
 from wcwidth.wcwidth import wcswidth
-
 from asciimatics.screen import Screen, TemporaryCanvas
 from asciimatics.constants import COLOUR_REGEX
 
@@ -31,6 +29,12 @@ class Renderer(metaclass=ABCMeta):
     It can also represent a sequence of strings that can be played one after
     the other to make a simple animation sequence - e.g. a rotating globe.
     """
+
+    @abstractmethod
+    def reset(self):
+        """
+        Reset the state of this Renderer.
+        """
 
     @property
     @abstractmethod
@@ -96,6 +100,9 @@ class StaticRenderer(Renderer):
         self._animation = animation
         self._colour_map = None
         self._plain_images = []
+
+    def reset(self):
+        self._index = 0
 
     def _convert_images(self):
         """
@@ -249,10 +256,21 @@ class DynamicRenderer(Renderer, metaclass=ABCMeta):
         :py:meth:`.rendered_text`.
         """
 
+    @abstractmethod
+    def _render_all(self):
+        """
+        Generate all output.
+
+        If this renderer cannot reasonably return everything, it will just return the next frame (as
+        per _render_now() inside an iterable object.
+
+        :returns: an iterable of image/colour map tuples.
+        """
+
     @property
     def images(self):
-        # We can't return all, so just return the latest rendered image.
-        return [self.rendered_text[0]]
+        # Attempt to get all images.  Note that many are genuinely dynamic and so will only return one.
+        return [x[0] for x in self._render_all()]
 
     @property
     def rendered_text(self):
