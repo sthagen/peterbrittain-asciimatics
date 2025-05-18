@@ -2,7 +2,7 @@
 This module implements bar chart renderers.
 """
 
-from abc import abstractmethod
+from abc import abstractmethod, ABCMeta
 
 from asciimatics.constants import DOUBLE_LINE, SINGLE_LINE
 from asciimatics.renderers.base import DynamicRenderer
@@ -10,7 +10,7 @@ from asciimatics.screen import Screen
 from asciimatics.utilities import BoxTool
 
 
-class _BarChartBase(DynamicRenderer):
+class _BarChartBase(DynamicRenderer, metaclass=ABCMeta):
     #: Constant to indicate no axes should be rendered.
     NONE = 0
     NO_AXIS = 0
@@ -65,7 +65,9 @@ class _BarChartBase(DynamicRenderer):
 
     @abstractmethod
     def _render_now(self):
-        pass
+        """
+        See DynamicRenderer for details.
+        """
 
     @property
     def border_style(self):
@@ -407,10 +409,8 @@ class VBarChart(_BarChartBase):
                 total_bar_space = int_w - total_gap_space
                 bar_width = total_bar_space // len(self._functions)
 
-        if bar_width <= 0:
-            raise ValueError(
-                f"Not enough space. {len(self._functions)} bars + {total_gap_space} space for gaps "
-                f"is > your graph width of {int_w}")
+        # Try to draw what we can when it's too small.
+        bar_width = max(1, bar_width)
 
         # Write keys
         if self._keys:

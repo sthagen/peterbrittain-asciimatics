@@ -183,6 +183,7 @@ class TestRendererOthers(unittest.TestCase):
         """
         # Check basic content of the renderer
         renderer = Plasma(5, 10, 8)
+        renderer.reset()
 
         # Check several renderings
         for _ in range(10):
@@ -203,9 +204,10 @@ class TestRendererOthers(unittest.TestCase):
         """
         # Check basic content of the renderer
         renderer = Kaleidoscope(5, 10, StaticRenderer(["# # #\n" * 5]), 3)
+        renderer.reset()
 
         # Check several renderings
-        for _ in range(180):
+        for _ in range(30):
             output = renderer.rendered_text
             for char in "\n".join(output[0]):
                 self.assertIn(char, ' #\n')

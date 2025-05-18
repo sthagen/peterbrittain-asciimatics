@@ -135,7 +135,7 @@ class Map(Effect):
         self._thread = threading.Thread(target=self._get_tiles)
         self._thread.daemon = True
         self._thread.start()
-        
+
         # a separate directory to store cached files.
         if not os.path.isdir('mapscache'):
             os.mkdir('mapscache')
@@ -166,9 +166,11 @@ class Map(Effect):
         if cache_file not in self._tiles:
             if not os.path.isfile(cache_file):
                 url = _IMAGE_URL.format(z_tile, x_tile, y_tile, _KEY)
-                data = requests.get(url).content
+                response = requests.get(url)
+                if response.status_code != 200:
+                    return
                 with open(cache_file, 'wb') as f:
-                    f.write(data)
+                    f.write(response.content)
             self._tiles[cache_file] = [
                 x_tile, y_tile, z_tile,
                 ColourImageFile(self._screen, cache_file, height=_START_SIZE, dither=True,
@@ -187,9 +189,11 @@ class Map(Effect):
                     tile = json.loads(f.read().decode('utf-8'))
             else:
                 url = _VECTOR_URL.format(z_tile, x_tile, y_tile, _KEY)
-                data = requests.get(url).content
+                response = requests.get(url)
+                if response.status_code != 200:
+                    return
                 try:
-                    tile = mapbox_vector_tile.decode(data)
+                    tile = mapbox_vector_tile.decode(response.content)
                     with open(cache_file, mode='w') as f:
                         json.dump(literal_eval(repr(tile)), f)
                 except DecodeError:

@@ -21,6 +21,7 @@ class Typewriter(DynamicRenderer):
         self._count = 0
 
     def _render_all(self):
+        self._clear()
         while self._count < sum(len(x) for x in self._source.rendered_text[0]):
             yield self._render_now()
 
