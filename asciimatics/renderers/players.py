@@ -226,6 +226,7 @@ class AsciinemaPlayer(AbstractScreenPlayer):
         f = open(filename, "rb")
         header = json.loads(f.readline())
         if header["version"] != 2:
+            f.close()
             raise RuntimeError("Unsupported file format")
 
         # Use file details if not overridden by constructor params.

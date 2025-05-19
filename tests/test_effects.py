@@ -1,13 +1,13 @@
 import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from random import randint
+from random import randint, seed
 import os
 import sys
 from asciimatics.effects import Print, Cycle, BannerText, Mirage, Scroll, \
     Stars, Matrix, Snow, Wipe, Clock, Cog, RandomNoise, Julia, Sprite
 from asciimatics.paths import Path
-from asciimatics.renderers import FigletText, StaticRenderer
+from asciimatics.renderers import FigletText, Rainbow, StaticRenderer
 from asciimatics.scene import Scene
 from asciimatics.screen import Screen, Canvas
 from asciimatics.sprites import Sam
@@ -17,6 +17,9 @@ if sys.platform != "win32":
 
 
 class TestEffects(unittest.TestCase):
+    def setUp(self):
+        seed(42)
+
     def assert_blank(self, canvas):
         """
         Check that a specified canvas is blank.
@@ -202,7 +205,7 @@ class TestEffects(unittest.TestCase):
         # Check that Mirage randomly updates the Screen every other frame.
         screen = MagicMock(spec=Screen, colours=8, unicode_aware=False)
         canvas = Canvas(screen, 10, 40, 0, 0)
-        effect = Mirage(canvas, FigletText("hello"), 3, 1)
+        effect = Mirage(canvas, Rainbow(screen, FigletText("hello")), 3, 1)
         effect.reset()
         effect.update(0)
         self.assert_blank(canvas)
@@ -398,6 +401,9 @@ class TestEffects(unittest.TestCase):
         # Check there is no stop frame by default.
         self.assertEqual(effect.stop_frame, 0)
 
+        # Check this effect asks to be updated once a second.
+        self.assertEqual(effect.frame_update_count, 20)
+
         # This effect should ignore events.
         event = object()
         self.assertEqual(event, effect.process_event(event))
@@ -411,21 +417,22 @@ class TestEffects(unittest.TestCase):
         canvas = Canvas(screen, 10, 40, 0, 0)
         path = Path()
         path.jump_to(10, 5)
-        path.move_straight_to(20, 10, 5)
-        path.move_straight_to(30, 5, 5)
-        path.move_straight_to(20, 0, 5)
+        path.wait(4)
+        path.move_straight_to(10, 10, 5)
+        path.move_straight_to(30, 10, 5)
+        path.move_straight_to(30, 0, 5)
         path.move_straight_to(10, 5, 5)
         effect = Sam(canvas, path)
         effect.reset()
         self.assert_blank(canvas)
         my_buffer = [[(32, 7, 0, 0) for _ in range(40)] for _ in range(10)]
-        for i in range(30):
+        for i in range(40):
             effect.update(i)
             self.assertEqual(self.check_canvas(
                 canvas,
                 my_buffer,
                 lambda value: self.assertLess(value[0], 129)),
-                i % 2 == 0, "Bad update on frame %d" % i)
+                i not in (4, 6, 8) and i % 2 == 0, "Bad update on frame %d" % i)
 
         # Check there is no stop frame by default.
         self.assertEqual(effect.stop_frame, 0)

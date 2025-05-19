@@ -2,7 +2,7 @@ import random
 import unittest
 from unittest.mock import MagicMock
 from asciimatics.particles import ShootScreen, DropScreen, Explosion, Rain, \
-    StarFirework, PalmFirework, RingFirework, SerpentFirework
+    StarFirework, PalmFirework, RingFirework, SerpentFirework, Particle
 from asciimatics.screen import Screen, Canvas
 
 
@@ -150,6 +150,18 @@ class TestParticles(unittest.TestCase):
                           effect,
                           lambda value: self.assertIn(chr(value[0]), '|+- '),
                           iterations=20)
+
+    def test_create(self):
+        """
+        Test that on_create mechanism works.
+        """
+        def callback(_):
+            self.callback_called = True
+
+        self.callback_called = False
+        particle = Particle("x", 0, 0, 0, 0, [(1,0,0)], 5, lambda x: (0,0), on_create=callback)
+        particle.next()
+        self.assertTrue(self.callback_called)
 
 
 if __name__ == '__main__':

@@ -44,6 +44,11 @@ class TestRendererTypewriter(unittest.TestCase):
         output = renderer.images
         self.assertEqual(output, [["H    "], ["He   "], ["Hel  "], ["Hell "], ["Hello"]])
 
+        # Check reset works
+        renderer.reset()
+        output = renderer.images
+        self.assertEqual(output, [["H    "], ["He   "], ["Hel  "], ["Hell "], ["Hello"]])
+
 
 if __name__ == '__main__':
     unittest.main()

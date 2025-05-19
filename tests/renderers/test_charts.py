@@ -38,6 +38,7 @@ class TestBarChart(unittest.TestCase):
 
         renderer.border_style = ASCII_LINE
         renderer.axes_style = ASCII_LINE
+        renderer.reset()
         self.assertEqual(
             str(renderer),
             "+---------------+\n"
@@ -48,8 +49,9 @@ class TestBarChart(unittest.TestCase):
             "|               |\n"
             "+---------------+")
 
-        # Trivial test for property
+        # Trivial tests for properties
         self.assertEqual(renderer.axes_style, ASCII_LINE)
+        self.assertEqual(renderer.border_style, ASCII_LINE)
 
     def test_args_no_scale(self):
         renderer = BarChart(3, 10, [fn(10), fn(5)], char='=', border=False, axes=BarChart.NO_AXIS)
@@ -203,6 +205,12 @@ class TestBarChart(unittest.TestCase):
                 ]
             )
         )
+
+        # Check for bad gradient
+        with self.assertRaises(ValueError):
+            renderer = BarChart(
+            3, 5, [fn(5), fn(3), fn(1)], border=False, axes=BarChart.NO_AXIS,
+            gap=0, gradient=[(0,1,2,3), (1,2,3,4)])
 
 
 class TestVBarChart(unittest.TestCase):
