@@ -1,6 +1,10 @@
 """
 This module defines the exceptions used by asciimatics.
 """
+from __future__ import annotations
+from typing import TYPE_CHECKING, List, Optional
+if TYPE_CHECKING:
+    from asciimatics.scene import Scene
 
 
 class ResizeScreenError(Exception):
@@ -9,7 +13,7 @@ class ResizeScreenError(Exception):
     a Scene (and the Screen has been told not to ignore a resizing event).
     """
 
-    def __init__(self, message, scene=None):
+    def __init__(self, message: str, scene: Optional[Scene] = None):
         """
         :param message: Error message for this exception.
         :param scene: Scene that was active at time of resize.
@@ -18,14 +22,14 @@ class ResizeScreenError(Exception):
         self._scene = scene
         self._message = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Printable form of the exception.
         """
         return self._message
 
     @property
-    def scene(self):
+    def scene(self) -> Optional[Scene]:
         """
         The Scene that was running when the Screen resized.
         """
@@ -40,14 +44,14 @@ class StopApplication(Exception):
     need to be caught by the application using Asciimatics.
     """
 
-    def __init__(self, message):
+    def __init__(self, message: str):
         """
         :param message: Error message for this exception.
         """
         super().__init__()
         self._message = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Printable form of the exception.
         """
@@ -60,7 +64,7 @@ class NextScene(Exception):
     next Scene being played.  Only effective inside `Screen.play()`.
     """
 
-    def __init__(self, name=None):
+    def __init__(self, name: Optional[str] = None):
         """
         :param name: Next Scene to invoke.  Defaults to next in the list.
         """
@@ -68,7 +72,7 @@ class NextScene(Exception):
         self._name = name
 
     @property
-    def name(self):
+    def name(self) -> Optional[str]:
         """
         The name of the next Scene to invoke.
         """
@@ -82,7 +86,7 @@ class InvalidFields(Exception):
     is found.
     """
 
-    def __init__(self, fields):
+    def __init__(self, fields: List[Optional[str]]):
         """
         :param fields: The list of the fields that are invalid.
         """
@@ -90,7 +94,7 @@ class InvalidFields(Exception):
         self._fields = fields
 
     @property
-    def fields(self):
+    def fields(self) -> List[Optional[str]]:
         """
         The list of fields that are invalid.
         """

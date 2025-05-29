@@ -13,13 +13,13 @@ from itertools import zip_longest
 from locale import getlocale
 from logging import getLogger
 from math import sqrt
-
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Type, Union, cast
+from dataclasses import dataclass
 from wcwidth import wcwidth, wcswidth
-
-from asciimatics.event import KeyboardEvent, MouseEvent
+from asciimatics.event import KeyboardEvent, MouseEvent, Event
 from asciimatics.exceptions import ResizeScreenError, StopApplication, NextScene
-from asciimatics.utilities import _DotDict
 from asciimatics import constants
+from asciimatics.scene import Scene
 
 logger = getLogger(__name__)
 
@@ -33,7 +33,7 @@ class _DoubleBuffer():
     Pure python Screen buffering.
     """
 
-    def __init__(self, height, width):
+    def __init__(self, height: int, width: int):
         """
         :param height: Height of the buffer to create.
         :param width: Width of the buffer to create.
@@ -41,12 +41,20 @@ class _DoubleBuffer():
         super().__init__()
         self._height = height
         self._width = width
-        self._double_buffer = None
+        self._double_buffer: list[list[tuple]] = []
         line = [(" ", Screen.COLOUR_WHITE, 0, 0, 1) for _ in range(self._width)]
-        self._screen_buffer = [line[:] for _ in range(self._height)]
+        self._screen_buffer: List[List[tuple[Any, Any, Any, Any,
+                                             Any]]] = [line[:] for _ in range(self._height)]
         self.clear(Screen.COLOUR_WHITE, 0, 0)
 
-    def clear(self, fg, attr, bg, x=0, y=0, w=None, h=None):
+    def clear(self,
+              fg: Optional[int],
+              attr: Optional[int],
+              bg: Optional[int],
+              x: int = 0,
+              y: int = 0,
+              w: Optional[int] = None,
+              h: Optional[int] = None):
         """
         Clear a box in the double-buffer.
 
@@ -61,8 +69,8 @@ class _DoubleBuffer():
         :param w: Optional width of the box.
         :param h: Optional height of the box.
         """
-        width = self._width if w is None else w
-        height = self._height if h is None else h
+        width: int = self._width if w is None else w
+        height: int = self._height if h is None else h
         width = max(0, min(self._width - x, width))
         height = max(0, min(self._height - y, height))
         line = [(" ", fg, attr, bg, 1) for _ in range(width)]
@@ -70,7 +78,7 @@ class _DoubleBuffer():
             self._double_buffer = [line[:] for _ in range(height)]
         else:
             for i in range(y, y + height):
-                self._double_buffer[i][x:x + w] = line[:]
+                self._double_buffer[i][x:x + width] = line[:]
 
     def invalidate(self):
         """
@@ -79,7 +87,7 @@ class _DoubleBuffer():
         line = [(None, None, None, None, 1) for _ in range(self._width)]
         self._screen_buffer = [line[:] for _ in range(self._height)]
 
-    def get(self, x, y):
+    def get(self, x: int, y: int) -> Tuple[str, Optional[int], Optional[int], Optional[int], Optional[int]]:
         """
         Get the cell value from the specified location
 
@@ -90,7 +98,10 @@ class _DoubleBuffer():
         """
         return self._double_buffer[y][x]
 
-    def set(self, x, y, value):
+    def set(self,
+            x: int,
+            y: int,
+            value: Tuple[str, Optional[int], Optional[int], Optional[int], Optional[int]]):
         """
         Set the cell value from the specified location
 
@@ -100,7 +111,20 @@ class _DoubleBuffer():
         """
         self._double_buffer[y][x] = value
 
-    def deltas(self, start, height):
+    def set_slice(self,
+                  x: slice,
+                  y: int,
+                  value: List[Tuple[str, Optional[int], Optional[int], Optional[int], Optional[int]]]):
+        """
+        Set the cell value from the specified location
+
+        :param x: The slice to use for updating the buffer.
+        :param y: The row (y coord) of the character.
+        :param value: A list of 5-tuples of (unicode, foreground, attributes, background, width).
+        """
+        self._double_buffer[y][x] = value
+
+    def deltas(self, start: int, height: int) -> Iterator[Tuple[int, int]]:
         """
         Return a list-like (i.e. iterable) object of (y, x) tuples
         """
@@ -111,7 +135,7 @@ class _DoubleBuffer():
                 if old_cell != new_cell:
                     yield y, x
 
-    def scroll(self, lines):
+    def scroll(self, lines: int):
         """
         Scroll the window up or down.
 
@@ -137,7 +161,7 @@ class _DoubleBuffer():
                 self._double_buffer[y] = line[:]
                 self._screen_buffer[y] = line[:]
 
-    def block_transfer(self, buffer, x, y):
+    def block_transfer(self, buffer: "_DoubleBuffer", x: int, y: int):
         """
         Copy a buffer entirely to this double buffer.
 
@@ -156,10 +180,11 @@ class _DoubleBuffer():
         # Copy the available section
         for by in range(0, self._height):
             if y <= by < y + buffer.height:
-                self._double_buffer[by][block_min_x:block_max_x] = buffer.slice(
+                self._double_buffer[by][block_min_x:block_max_x] = buffer.get_slice(
                     block_min_x - x, by - y, block_max_x - block_min_x)
 
-    def slice(self, x, y, width):
+    def get_slice(self, x: int, y: int,
+                  width: int) -> List[Tuple[str, Optional[int], Optional[int], Optional[int], Optional[int]]]:
         """
         Provide a slice of data from the buffer at the specified location
 
@@ -179,26 +204,26 @@ class _DoubleBuffer():
         self._screen_buffer = [row[:] for row in self._double_buffer]
 
     @property
-    def height(self):
+    def height(self) -> int:
         """
         The height of this buffer.
         """
         return self._height
 
     @property
-    def width(self):
+    def width(self) -> int:
         """
         The width of this buffer.
         """
         return self._width
 
     @property
-    def plain_image(self):
-        return ["".join(x[0] for x in self.slice(0, y, self.width)) for y in range(self.height)]
+    def plain_image(self) -> List[str]:
+        return ["".join(x[0] for x in self.get_slice(0, y, self.width)) for y in range(self.height)]
 
     @property
-    def colour_map(self):
-        return [[x[1:4] for x in self.slice(0, y, self.width)] for y in range(self.height)]
+    def colour_map(self) -> List[List[Tuple[Optional[int], Optional[int], Optional[int]]]]:
+        return [[x[1:4] for x in self.get_slice(0, y, self.width)] for y in range(self.height)]
 
 
 class _AbstractCanvas(metaclass=ABCMeta):
@@ -210,7 +235,8 @@ class _AbstractCanvas(metaclass=ABCMeta):
     _line_chars = " ''^.|/7.\\|Ywbd#"
     _uni_line_chars = " ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█"
 
-    #  Colour palette for 8/16 colour terminals
+    # Colour palette for 8/16 colour terminals
+    # yapf: disable
     _8_palette = [
         0x00, 0x00, 0x00,
         0x80, 0x00, 0x00,
@@ -481,8 +507,14 @@ class _AbstractCanvas(metaclass=ABCMeta):
         0xe4, 0xe4, 0xe4,
         0xee, 0xee, 0xee,
     ]
+    # yapf: enable
 
-    def __init__(self, height, width, buffer_height, colours, unicode_aware):
+    def __init__(self,
+                 height: int,
+                 width: int,
+                 buffer_height: Optional[int],
+                 colours: int,
+                 unicode_aware: bool):
         """
         :param height: The buffer height for this object.
         :param width: The buffer width for this object.
@@ -500,18 +532,25 @@ class _AbstractCanvas(metaclass=ABCMeta):
         self.width = width
         self.colours = colours
         self._buffer_height = height if buffer_height is None else buffer_height
-        self._buffer = None
+        self._buffer = _DoubleBuffer(self._buffer_height, self.width)
         self._start_line = 0
         self._x = 0
         self._y = 0
 
         # dictionary cache for colour blending
-        self._blends = {}
+        self._blends: dict[tuple, int] = {}
 
         # Reset the screen ready to go...
         self.reset()
 
-    def clear_buffer(self, fg, attr, bg, x=0, y=0, w=None, h=None):
+    def clear_buffer(self,
+                     fg: Optional[int],
+                     attr: Optional[int],
+                     bg: Optional[int],
+                     x: int = 0,
+                     y: int = 0,
+                     w: Optional[int] = None,
+                     h: Optional[int] = None):
         """
         Clear a box in the current double-buffer used by this object.
 
@@ -535,11 +574,11 @@ class _AbstractCanvas(metaclass=ABCMeta):
         """
         # Reset our screen buffer
         self._start_line = 0
-        self._x = self._y = None
+        self._x = self._y = 0
         self._buffer = _DoubleBuffer(self._buffer_height, self.width)
         self._reset()
 
-    def scroll(self, lines=1):
+    def scroll(self, lines: int = 1):
         """
         Scroll the abstract canvas up one line.
 
@@ -548,7 +587,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
         self._buffer.scroll(lines)
         self._start_line += lines
 
-    def scroll_to(self, line):
+    def scroll_to(self, line: int):
         """
         Scroll the abstract canvas to make a specific line.
 
@@ -569,7 +608,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
         Refresh this object - this will draw to the underlying display interface.
         """
 
-    def get_from(self, x, y):
+    def get_from(self, x: int, y: int) -> Optional[Tuple[int, Optional[int], Optional[int], Optional[int]]]:
         """
         Get the character at the specified location.
 
@@ -586,7 +625,14 @@ class _AbstractCanvas(metaclass=ABCMeta):
         cell = self._buffer.get(x, y)
         return ord(cell[0]), cell[1], cell[2], cell[3]
 
-    def print_at(self, text, x, y, colour=7, attr=0, bg=0, transparent=False):
+    def print_at(self,
+                 text: str,
+                 x: int,
+                 y: int,
+                 colour: Optional[int] = 7,
+                 attr: Optional[int] = 0,
+                 bg: Optional[int] = 0,
+                 transparent: bool = False):
         """
         Print the text at the specified location using the specified colour and attributes.
 
@@ -654,13 +700,14 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 if x + len(text) > self.width:
                     text = text[:self.width - x]
                 if not transparent:
-                    self._buffer.set(slice(x, x + len(text)), y, [(c, colour, attr, bg, 1) for c in text])
+                    self._buffer.set_slice(slice(x, x + len(text)),
+                                           y, [(c, colour, attr, bg, 1) for c in text])
                 else:
                     for i, c in enumerate(text):
                         if c != " ":
                             self._buffer.set(x + i, y, (c, colour, attr, bg, 1))
 
-    def block_transfer(self, buffer, x, y):
+    def block_transfer(self, buffer: _DoubleBuffer, x: int, y: int):
         """
         Copy a buffer to the screen double buffer at a specified location.
 
@@ -671,28 +718,28 @@ class _AbstractCanvas(metaclass=ABCMeta):
         self._buffer.block_transfer(buffer, x, y)
 
     @property
-    def start_line(self):
+    def start_line(self) -> int:
         """
         :return: The start line of the top of the canvas.
         """
         return self._start_line
 
     @property
-    def unicode_aware(self):
+    def unicode_aware(self) -> bool:
         """
         :return: Whether unicode input/output is supported or not.
         """
         return self._unicode_aware
 
     @property
-    def dimensions(self):
+    def dimensions(self) -> Tuple[int, int]:
         """
         :return: The full dimensions of the canvas as a (height, width) tuple.
         """
         return self.height, self.width
 
     @property
-    def palette(self):
+    def palette(self) -> List[int]:
         """
         :return: A palette compatible with the PIL.
         """
@@ -702,7 +749,12 @@ class _AbstractCanvas(metaclass=ABCMeta):
         else:
             return self._256_palette
 
-    def centre(self, text, y, colour=7, attr=0, colour_map=None):
+    def centre(self,
+               text: str,
+               y: int,
+               colour: int = 7,
+               attr: int = 0,
+               colour_map: Optional[List[Tuple[Optional[int], Optional[int], Optional[int]]]] = None):
         """
         Centre the text on the specified line (y) using the optional colour and attributes.
 
@@ -721,8 +773,15 @@ class _AbstractCanvas(metaclass=ABCMeta):
             x = (self.width - len(text)) // 2
         self.paint(text, x, y, colour, attr, colour_map=colour_map)
 
-    def paint(self, text, x, y, colour=7, attr=0, bg=0, transparent=False,
-              colour_map=None):
+    def paint(self,
+              text: str,
+              x: int,
+              y: int,
+              colour: Optional[int] = 7,
+              attr: Optional[int] = 0,
+              bg: Optional[int] = 0,
+              transparent: bool = False,
+              colour_map: Optional[List[Tuple[Optional[int], Optional[int], Optional[int]]]] = None):
         """
         Paint multi-colour text at the defined location.
 
@@ -765,7 +824,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
             if len(current) > 0:
                 self.print_at(current, x + offset, y, colour, attr, bg, transparent)
 
-    def _blend(self, new, old, ratio):
+    def _blend(self, new: Optional[int], old: Optional[int], ratio: int) -> Optional[int]:
         """
         Blend the new colour with the old according to the ratio.
 
@@ -777,6 +836,8 @@ class _AbstractCanvas(metaclass=ABCMeta):
         # Don't bother blending if none is required.
         if new is None:
             return old
+        if old is None:
+            return new
 
         # Check colour blend cache for a quick answer.
         key = (min(new, old), max(new, old))
@@ -797,12 +858,11 @@ class _AbstractCanvas(metaclass=ABCMeta):
         b = f(b1, b2)
 
         # Now do the reverse lookup...
-        nearest = (256 ** 2) * 3
+        nearest: float = (256**2) * 3
         match = 0
         for c in range(self.colours):
             (rc, gc, bc) = self.palette[c * 3:c * 3 + 3]
-            diff = sqrt(((rc - r) * 0.3) ** 2 + ((gc - g) * 0.59) ** 2 +
-                        ((bc - b) * 0.11) ** 2)
+            diff = sqrt(((rc - r) * 0.3)**2 + ((gc - g) * 0.59)**2 + ((bc - b) * 0.11)**2)
             if diff < nearest:
                 nearest = diff
                 match = c
@@ -811,7 +871,14 @@ class _AbstractCanvas(metaclass=ABCMeta):
         self._blends[key] = match
         return match
 
-    def highlight(self, x, y, w, h, fg=None, bg=None, blend=100):
+    def highlight(self,
+                  x: int,
+                  y: int,
+                  w: int,
+                  h: int,
+                  fg: Optional[int] = None,
+                  bg: Optional[int] = None,
+                  blend: int = 100):
         """
         Highlight a specified section of the screen.
 
@@ -843,17 +910,16 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 new_fg = self._blend(fg, old[1], blend)
                 self._buffer.set(x + i, y + j, (old[0], new_fg, old[2], new_bg, old[4]))
 
-    def is_visible(self, x, y):
+    def is_visible(self, x: int, y: int) -> bool:
         """
         Return whether the specified location is on the visible screen.
 
         :param x: The column (x coord) for the location to check.
         :param y: The line (y coord) for the location to check.
         """
-        return ((0 <= x < self.width) and
-                (self._start_line <= y < self._start_line + self.height))
+        return ((0 <= x < self.width) and (self._start_line <= y < self._start_line + self.height))
 
-    def move(self, x, y):
+    def move(self, x: Union[float, int], y: Union[float, int]):
         """
         Move the drawing cursor to the specified position.
 
@@ -863,7 +929,13 @@ class _AbstractCanvas(metaclass=ABCMeta):
         self._x = int(round(x * 2, 0))
         self._y = int(round(y * 2, 0))
 
-    def draw(self, x, y, char=None, colour=7, bg=0, thin=False):
+    def draw(self,
+             x: Union[float, int],
+             y: Union[float, int],
+             char: Optional[str] = None,
+             colour: int = 7,
+             bg: int = 0,
+             thin: bool = False):
         """
         Draw a line from drawing cursor to the specified position.
 
@@ -879,8 +951,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
         :param thin: Optional width of anti-aliased line.
         """
         # Decide what type of line drawing to use.
-        line_chars = (self._uni_line_chars if self._unicode_aware else
-                      self._line_chars)
+        line_chars = (self._uni_line_chars if self._unicode_aware else self._line_chars)
 
         # Define line end points.
         x0 = self._x
@@ -894,8 +965,8 @@ class _AbstractCanvas(metaclass=ABCMeta):
 
         # Don't bother drawing anything if we're guaranteed to be off-screen
         # pylint: disable-next=too-many-boolean-expressions
-        if ((x0 < 0 and x1 < 0) or (x0 >= self.width * 2 and x1 >= self.width * 2) or
-                (y0 < 0 and y1 < 0) or (y0 >= self.height * 2 and y1 >= self.height * 2)):
+        if ((x0 < 0 and x1 < 0) or (x0 >= self.width * 2 and x1 >= self.width * 2) or (y0 < 0 and y1 < 0)
+                or (y0 >= self.height * 2 and y1 >= self.height * 2)):
             return
 
         dx = abs(x1 - x0)
@@ -917,7 +988,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
             for ix in range(start_x, end_x):
                 if ix % 2 == 0 or next_char == -1:
                     next_char = _get_start_char(ix // 2, iy // 2)
-                next_char |= 2 ** abs(ix % 2) * 4 ** (iy % 2)
+                next_char |= 2**abs(ix % 2) * 4**(iy % 2)
                 if ix % 2 == 1:
                     self.print_at(line_chars[next_char], ix // 2, iy // 2, colour, bg=bg)
             if end_x % 2 == 1:
@@ -933,7 +1004,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                     px = ix & ~1
                     py = iy & ~1
                     next_char = _get_start_char(px // 2, py // 2)
-                next_char |= 2 ** abs(ix % 2) * 4 ** (iy % 2)
+                next_char |= 2**abs(ix % 2) * 4**(iy % 2)
                 err -= 2 * dy
                 if err < 0:
                     iy += sy
@@ -941,8 +1012,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 ix += sx
 
                 if char is None:
-                    self.print_at(line_chars[next_char],
-                                  px // 2, py // 2, colour, bg=bg)
+                    self.print_at(line_chars[next_char], px // 2, py // 2, colour, bg=bg)
                 else:
                     self.print_at(char, px // 2, py // 2, colour, bg=bg)
 
@@ -956,7 +1026,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                     px = ix & ~1
                     py = iy & ~1
                     next_char = _get_start_char(px // 2, py // 2)
-                next_char |= 2 ** abs(ix % 2) * 4 ** (iy % 2)
+                next_char |= 2**abs(ix % 2) * 4**(iy % 2)
                 err -= 2 * dx
                 if err < 0:
                     ix += sx
@@ -964,8 +1034,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 iy += sy
 
                 if char is None:
-                    self.print_at(line_chars[next_char],
-                                  px // 2, py // 2, colour, bg=bg)
+                    self.print_at(line_chars[next_char], px // 2, py // 2, colour, bg=bg)
                 else:
                     self.print_at(char, px // 2, py // 2, colour, bg=bg)
 
@@ -981,7 +1050,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
             if not thin:
                 _draw_on_y(x0 + 1, y0)
 
-    def fill_polygon(self, polygons, colour=7, bg=0):
+    def fill_polygon(self, polygons: List[List[Tuple[int, int]]], colour: int = 7, bg: int = 0):
         """
         Draw a filled polygon.
 
@@ -993,7 +1062,16 @@ class _AbstractCanvas(metaclass=ABCMeta):
         :param colour: The foreground colour to use for the polygon
         :param bg: The background colour to use for the polygon
         """
+
+        @dataclass
+        class _Edge:
+            min_y: int = 0
+            max_y: int = 0
+            x: int = 0
+            dx: int = 0
+
         def _add_edge(a, b):
+
             # Ignore horizontal lines - they are redundant
             if a[1] == b[1]:
                 return
@@ -1003,7 +1081,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 return
 
             # Save off the edge, always starting at the lowest value of y.
-            new_edge = _DotDict()
+            new_edge = _Edge()
             if a[1] < b[1]:
                 new_edge.min_y = a[1]
                 new_edge.max_y = b[1]
@@ -1016,11 +1094,14 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 new_edge.dx = (a[0] - b[0]) / (a[1] - b[1]) / 2
             edges.append(new_edge)
 
+        def sort_edges(edge: Any) -> int:
+            return edge.x
+
         # Create a table of all the edges in the polygon, sorted on smallest x.
         logger.debug("Processing polygon: %s", polygons)
         min_y = self.height
         max_y = -1
-        edges = []
+        edges: list[_Edge] = []
         last = None
         for polygon in polygons:
             # Ignore lines and polygons.
@@ -1028,11 +1109,11 @@ class _AbstractCanvas(metaclass=ABCMeta):
                 continue
 
             # Ignore any polygons completely off the screen
-            x, y = zip(*polygon)
-            p_min_x = min(x)
-            p_max_x = max(x)
-            p_min_y = min(y)
-            p_max_y = max(y)
+            px, py = zip(*polygon)
+            p_min_x = min(px)
+            p_max_x = max(px)
+            p_min_y = min(py)
+            p_max_y = max(py)
             if p_max_x < 0 or p_min_x >= self.width or p_max_y < 0 or p_min_y > self.height:
                 continue
 
@@ -1044,7 +1125,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                     _add_edge(last, point)
                 last = point
             _add_edge(polygon[0], polygon[-1])
-            edges = sorted(edges, key=lambda e: e.x)
+            edges = sorted(edges, key=sort_edges)
 
         # Check we still have something to do:
         if len(edges) == 0:
@@ -1088,8 +1169,7 @@ class _AbstractCanvas(metaclass=ABCMeta):
                                     (last_x >= self.width and edge.x >= self.width)):
                                 # Clip raster to screen width.
                                 self.move(max(0, last_x), y)
-                                self.draw(
-                                    min(edge.x, self.width), y, colour=colour, bg=bg, thin=True)
+                                self.draw(min(edge.x, self.width), y, colour=colour, bg=bg, thin=True)
 
                 # Update the x location for this active edge.
                 edge.x += edge.dx
@@ -1108,7 +1188,7 @@ class TemporaryCanvas(_AbstractCanvas):
     properties).
     """
 
-    def __init__(self, height, width):
+    def __init__(self, height: int, width: int):
         """
         :param height: The height of the screen buffer to be used.
         :param width: The width of the screen buffer to be used.
@@ -1117,11 +1197,11 @@ class TemporaryCanvas(_AbstractCanvas):
         super().__init__(height, width, None, 256, True)
 
     @property
-    def plain_image(self):
+    def plain_image(self) -> List[str]:
         return self._buffer.plain_image
 
     @property
-    def colour_map(self):
+    def colour_map(self) -> List[List[Tuple[Optional[int], Optional[int], Optional[int]]]]:
         return self._buffer.colour_map
 
     def refresh(self):
@@ -1138,7 +1218,12 @@ class Canvas(_AbstractCanvas):
     called.
     """
 
-    def __init__(self, screen, height, width, x=None, y=None):
+    def __init__(self,
+                 screen: "Screen",
+                 height: int,
+                 width: int,
+                 x: Optional[int] = None,
+                 y: Optional[int] = None):
         """
         :param screen: The underlying Screen that will be drawn to on refresh.
         :param height: The height of the screen buffer to be used.
@@ -1150,8 +1235,7 @@ class Canvas(_AbstractCanvas):
         to centring within the current Screen for that location.
         """
         # Save off the screen details.
-        super().__init__(
-            height, width, None, screen.colours, screen.unicode_aware)
+        super().__init__(height, width, None, screen.colours, screen.unicode_aware)
         self._screen = screen
         self._dx = (screen.width - width) // 2 if x is None else x
         self._dy = (screen.height - height) // 2 if y is None else y
@@ -1167,7 +1251,7 @@ class Canvas(_AbstractCanvas):
         pass
 
     @property
-    def origin(self):
+    def origin(self) -> Tuple[int, int]:
         """
         The location of top left corner of the canvas on the Screen.
 
@@ -1271,12 +1355,11 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
     KEY_CONTROL = -601
     KEY_MENU = -602
 
-    def __init__(self, height, width, buffer_height, unicode_aware):
+    def __init__(self, height: int, width: int, buffer_height: Optional[int], unicode_aware: bool):
         """
         Don't call this constructor directly.
         """
-        super().__init__(
-            height, width, buffer_height, 0, unicode_aware)
+        super().__init__(height, width, buffer_height, 0, unicode_aware)
 
         # Initialize base class variables - e.g. those used for drawing.
         self.height = height
@@ -1285,24 +1368,27 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
 
         # Set up internal state for colours - used by children to determine
         # changes to text colour when refreshing the screen.
-        self._colour = 0
-        self._attr = 0
-        self._bg = 0
+        self._colour: Optional[int] = 0
+        self._attr: Optional[int] = 0
+        self._bg: Optional[int] = 0
 
         # tracking of current cursor position - used in screen refresh.
-        self._cur_x = 0
-        self._cur_y = 0
+        self._cur_x: Optional[int] = None
+        self._cur_y: Optional[int] = None
 
         # Control variables for playing out a set of Scenes.
-        self._scenes = []
+        self._scenes: list[Scene] = []
         self._scene_index = 0
         self._frame = 0
         self._idle_frame_count = 0
         self._forced_update = False
-        self._unhandled_input = self._unhandled_event_default
+        self._unhandled_input: Optional[Callable] = self._unhandled_event_default
 
     @classmethod
-    def open(cls, height=None, catch_interrupt=False, unicode_aware=None):
+    def open(cls,
+             height: Optional[int] = None,
+             catch_interrupt: bool = False,
+             unicode_aware: Optional[bool] = None) -> "Screen":
         """
         Construct a new Screen for any platform.  This will just create the
         correct Screen object for your environment.  See :py:meth:`.wrapper` for
@@ -1354,22 +1440,19 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
 
             # Disable scrolling
             out_mode = win_out.GetConsoleMode()
-            win_out.SetConsoleMode(
-                out_mode & ~ win32console.ENABLE_WRAP_AT_EOL_OUTPUT)
+            win_out.SetConsoleMode(out_mode & ~win32console.ENABLE_WRAP_AT_EOL_OUTPUT)
 
             # Enable mouse input, disable quick-edit mode and disable ctrl-c
             # if needed.
             in_mode = win_in.GetConsoleMode()
-            new_mode = (in_mode | win32console.ENABLE_MOUSE_INPUT |
-                        ENABLE_EXTENDED_FLAGS)
+            new_mode = in_mode | win32console.ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS
             new_mode &= ~ENABLE_QUICK_EDIT_MODE
             if catch_interrupt:
                 # Ignore ctrl-c handlers if specified.
                 new_mode &= ~win32console.ENABLE_PROCESSED_INPUT
             win_in.SetConsoleMode(new_mode)
 
-            screen = _WindowsScreen(win_out, win_in, height, old_out, in_mode,
-                                    unicode_aware=unicode_aware)
+            screen = _WindowsScreen(win_out, win_in, height, old_out, in_mode, unicode_aware=unicode_aware)
         else:
             # Reproduce curses.wrapper()
             stdscr = curses.initscr()
@@ -1379,7 +1462,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
                 curses.cbreak()
             except curses.error:
                 pass
-            stdscr.keypad(1)
+            stdscr.keypad(True)
 
             # Fed up with linters complaining about original curses code - trying to be a bit better...
             # noinspection PyBroadException
@@ -1388,7 +1471,8 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
                 curses.start_color()
             except Exception as e:
                 logger.debug(e)
-            screen = _CursesScreen(stdscr, height,
+            screen = _CursesScreen(stdscr,
+                                   height,
                                    catch_interrupt=catch_interrupt,
                                    unicode_aware=unicode_aware)
 
@@ -1403,8 +1487,12 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         """
 
     @classmethod
-    def wrapper(cls, func, height=None, catch_interrupt=False, arguments=None,
-                unicode_aware=None):
+    def wrapper(cls,
+                func: Callable,
+                height: Optional[int] = None,
+                catch_interrupt: bool = False,
+                arguments: Optional[List[Any]] = None,
+                unicode_aware: Optional[bool] = None) -> Optional[bool]:
         """
         Construct a new Screen for any platform.  This will initialize the
         Screen, call the specified function and then tidy up the system as
@@ -1419,9 +1507,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         :param unicode_aware: Whether the application can use unicode or not.
             If None, try to detect from the environment if UTF-8 is enabled.
         """
-        screen = Screen.open(height,
-                             catch_interrupt=catch_interrupt,
-                             unicode_aware=unicode_aware)
+        screen = Screen.open(height, catch_interrupt=catch_interrupt, unicode_aware=unicode_aware)
         restore = True
         try:
             try:
@@ -1435,7 +1521,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         finally:
             screen.close(restore)
 
-    def _reset(self):
+    def _reset(self) -> None:
         """
         Reset the Screen.
         """
@@ -1459,7 +1545,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         # use double-width characters, so don't try to draw the next 2nd char (of 0 width).
         for y, x in self._buffer.deltas(0, self.height):
             new_cell = self._buffer.get(x, y)
-            if new_cell[4] > 0:
+            if new_cell[4] is not None and new_cell[4] > 0:
                 self._change_colours(new_cell[1], new_cell[2], new_cell[3])
                 self._print_at(new_cell[0], x, y, new_cell[4])
 
@@ -1482,7 +1568,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         self._change_colours(Screen.COLOUR_WHITE, 0, 0)
         self._clear()
 
-    def get_key(self):
+    def get_key(self) -> Optional[int]:
         """
         Check for a key without waiting.  This method is deprecated.  Use
         :py:meth:`.get_event` instead.
@@ -1502,7 +1588,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         """
 
     @staticmethod
-    def ctrl(char):
+    def ctrl(char: Union[int, str]) -> Optional[int]:
         """
         Calculate the control code for a given key.  For example, this converts
         "a" to 1 (which is the code for ctrl-a).
@@ -1526,7 +1612,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         :returns: True when the screen has been re-sized since the last check.
         """
 
-    def getch(self, x, y):
+    def getch(self, x: int, y: int) -> Optional[Tuple[int, Optional[int], Optional[int], Optional[int]]]:
         """
         Get the character at a specified location.  This method is deprecated.
         Use :py:meth:`.get_from` instead.
@@ -1536,7 +1622,14 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         """
         return self.get_from(x, y)
 
-    def putch(self, text, x, y, colour=7, attr=0, bg=0, transparent=False):
+    def putch(self,
+              text: str,
+              x: int,
+              y: int,
+              colour: int = 7,
+              attr: int = 0,
+              bg: int = 0,
+              transparent: bool = False):
         """
         Print text at the specified location.  This method is deprecated.  Use
         :py:meth:`.print_at` instead.
@@ -1553,7 +1646,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         self.print_at(text, x, y, colour, attr, bg, transparent)
 
     @staticmethod
-    def _unhandled_event_default(event):
+    def _unhandled_event_default(event: Event):
         """
         Default unhandled event handler for handling simple scene navigation.
         """
@@ -1564,8 +1657,13 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
             if c in (ord(" "), ord("\n"), ord("\r")):
                 raise NextScene()
 
-    def play(self, scenes, stop_on_resize=False, unhandled_input=None,
-             start_scene=None, repeat=True, allow_int=False):
+    def play(self,
+             scenes: List[Scene],
+             stop_on_resize: bool = False,
+             unhandled_input: Optional[Callable] = None,
+             start_scene: Optional[Scene] = None,
+             repeat: bool = True,
+             allow_int: bool = False):
         """
         Play a set of scenes.
 
@@ -1592,8 +1690,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         event that was not handled.
         """
         # Initialise the Screen for animation.
-        self.set_scenes(
-            scenes, unhandled_input=unhandled_input, start_scene=start_scene)
+        self.set_scenes(scenes, unhandled_input=unhandled_input, start_scene=start_scene)
 
         # Mainline loop for animations
         try:
@@ -1603,8 +1700,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
                 if self.has_resized():
                     if stop_on_resize:
                         self._scenes[self._scene_index].exit()
-                        raise ResizeScreenError("Screen resized",
-                                                self._scenes[self._scene_index])
+                        raise ResizeScreenError("Screen resized", self._scenes[self._scene_index])
                 b = time.time()
                 if b - a < 0.05:
                     # Just in case time has jumped (e.g. time change), ensure we only delay for 0.05s
@@ -1615,9 +1711,12 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
                         time.sleep(pause)
         except StopApplication:
             # Time to stop  - just exit the function.
-            return
+            pass
 
-    def set_scenes(self, scenes, unhandled_input=None, start_scene=None):
+    def set_scenes(self,
+                   scenes: List[Scene],
+                   unhandled_input: Optional[Callable] = None,
+                   start_scene: Optional[Scene] = None):
         """
         Remember a set of scenes to be played.  This must be called before
         using :py:meth:`.draw_next_frame`.
@@ -1660,8 +1759,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
 
         # Reset the Scene - this allows the original scene to pick up old
         # values on resizing.
-        self._scenes[self._scene_index].reset(
-            old_scene=start_scene, screen=self)
+        self._scenes[self._scene_index].reset(old_scene=start_scene, screen=self)
 
         # Reset other internal state for the animation
         self._frame = 0
@@ -1669,7 +1767,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         self._forced_update = False
         self.clear()
 
-    def draw_next_frame(self, repeat=True):
+    def draw_next_frame(self, repeat: bool = True):
         """
         Draw the next frame in the currently configured Scenes. You must call
         :py:meth:`.set_scenes` before using this for the first time.
@@ -1710,8 +1808,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
 
                     # Sort out when we next _need_ to do a refresh.
                     if effect.frame_update_count > 0:
-                        self._idle_frame_count = min(self._idle_frame_count,
-                                                     effect.frame_update_count)
+                        self._idle_frame_count = min(self._idle_frame_count, effect.frame_update_count)
                 self.refresh()
 
             if 0 < scene.duration <= self._frame:
@@ -1754,7 +1851,7 @@ class Screen(_AbstractCanvas, metaclass=ABCMeta):
         """
         return self._scenes[self._scene_index]
 
-    def force_update(self, full_refresh=False):
+    def force_update(self, full_refresh: bool = False):
         """
         Force the Screen to redraw the current Scene on the next call to
         draw_next_frame, overriding the frame_update_count value for all the
@@ -1832,15 +1929,15 @@ class ManagedScreen():
     to use.
     """
 
-    def __init__(self, func=lambda: None):
+    def __init__(self, func: Callable = lambda: None):
         """
         :param func: The function to call once the Screen has been created.
         """
         update_wrapper(self, func)
         self.func = func
-        self.screen = None
+        self.screen: Optional[Screen] = None
 
-    def __get__(self, obj, objtype):
+    def __get__(self, obj: Optional[Screen], objtype: Type[Screen]) -> partial:
         """
         Class decorator method, so we can use the class in a with statement.
 
@@ -1848,25 +1945,26 @@ class ManagedScreen():
         """
         return partial(self.__call__, obj)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> None:
         screen = Screen.open()
         kwargs["screen"] = screen
         output = self.func(*args, **kwargs)
         screen.close()
         return output
 
-    def __enter__(self):
+    def __enter__(self) -> Screen:
         """
         Method used for with statement
         """
         self.screen = Screen.open()
         return self.screen
 
-    def __exit__(self, etype, value, traceback):
+    def __exit__(self, etype: None, value: None, traceback: None):
         """
         Method used for with statement
         """
-        self.screen.close()
+        if self.screen is not None:
+            self.screen.close()
 
 
 if sys.platform == "win32":
@@ -1949,22 +2047,17 @@ if sys.platform == "win32":
 
         # Foreground colour lookup table.
         _COLOURS = {
-            Screen.COLOUR_DEFAULT: (win32console.FOREGROUND_RED |
-                                    win32console.FOREGROUND_GREEN |
-                                    win32console.FOREGROUND_BLUE),
+            Screen.COLOUR_DEFAULT: (win32console.FOREGROUND_RED | win32console.FOREGROUND_GREEN
+                                    | win32console.FOREGROUND_BLUE),
             Screen.COLOUR_BLACK: 0,
             Screen.COLOUR_RED: win32console.FOREGROUND_RED,
             Screen.COLOUR_GREEN: win32console.FOREGROUND_GREEN,
-            Screen.COLOUR_YELLOW: (win32console.FOREGROUND_RED |
-                                   win32console.FOREGROUND_GREEN),
+            Screen.COLOUR_YELLOW: (win32console.FOREGROUND_RED | win32console.FOREGROUND_GREEN),
             Screen.COLOUR_BLUE: win32console.FOREGROUND_BLUE,
-            Screen.COLOUR_MAGENTA: (win32console.FOREGROUND_RED |
-                                    win32console.FOREGROUND_BLUE),
-            Screen.COLOUR_CYAN: (win32console.FOREGROUND_BLUE |
-                                 win32console.FOREGROUND_GREEN),
-            Screen.COLOUR_WHITE: (win32console.FOREGROUND_RED |
-                                  win32console.FOREGROUND_GREEN |
-                                  win32console.FOREGROUND_BLUE)
+            Screen.COLOUR_MAGENTA: (win32console.FOREGROUND_RED | win32console.FOREGROUND_BLUE),
+            Screen.COLOUR_CYAN: (win32console.FOREGROUND_BLUE | win32console.FOREGROUND_GREEN),
+            Screen.COLOUR_WHITE: (win32console.FOREGROUND_RED | win32console.FOREGROUND_GREEN
+                                  | win32console.FOREGROUND_BLUE)
         }
 
         # Background colour lookup table.
@@ -1973,16 +2066,12 @@ if sys.platform == "win32":
             Screen.COLOUR_BLACK: 0,
             Screen.COLOUR_RED: win32console.BACKGROUND_RED,
             Screen.COLOUR_GREEN: win32console.BACKGROUND_GREEN,
-            Screen.COLOUR_YELLOW: (win32console.BACKGROUND_RED |
-                                   win32console.BACKGROUND_GREEN),
+            Screen.COLOUR_YELLOW: (win32console.BACKGROUND_RED | win32console.BACKGROUND_GREEN),
             Screen.COLOUR_BLUE: win32console.BACKGROUND_BLUE,
-            Screen.COLOUR_MAGENTA: (win32console.BACKGROUND_RED |
-                                    win32console.BACKGROUND_BLUE),
-            Screen.COLOUR_CYAN: (win32console.BACKGROUND_BLUE |
-                                 win32console.BACKGROUND_GREEN),
-            Screen.COLOUR_WHITE: (win32console.BACKGROUND_RED |
-                                  win32console.BACKGROUND_GREEN |
-                                  win32console.BACKGROUND_BLUE)
+            Screen.COLOUR_MAGENTA: (win32console.BACKGROUND_RED | win32console.BACKGROUND_BLUE),
+            Screen.COLOUR_CYAN: (win32console.BACKGROUND_BLUE | win32console.BACKGROUND_GREEN),
+            Screen.COLOUR_WHITE: (win32console.BACKGROUND_RED | win32console.BACKGROUND_GREEN
+                                  | win32console.BACKGROUND_BLUE)
         }
 
         # Attribute lookup table
@@ -1996,8 +2085,7 @@ if sys.platform == "win32":
             Screen.A_UNDERLINE: lambda x: x
         }
 
-        def __init__(self, stdout, stdin, buffer_height, old_out, old_in,
-                     unicode_aware=False):
+        def __init__(self, stdout, stdin, buffer_height, old_out, old_in, unicode_aware=False):
             """
             :param stdout: The win32console PyConsoleScreenBufferType object for stdout.
             :param stdin: The win32console PyConsoleScreenBufferType object for stdin.
@@ -2016,8 +2104,7 @@ if sys.platform == "win32":
             if unicode_aware is None:
                 # According to MSDN, 65001 is the Windows UTF-8 code page.
                 unicode_aware = win32console.GetConsoleCP() == 65001
-            super().__init__(
-                height, width, buffer_height, unicode_aware)
+            super().__init__(height, width, buffer_height, unicode_aware)
 
             # Save off the console details.
             self._stdout = stdout
@@ -2083,9 +2170,8 @@ if sys.platform == "win32":
                     # as long as the Alt key is present.
                     key_code = ord(event.Char)
                     logger.debug("Processing key: %x", key_code)
-                    if (event.KeyDown or
-                            (key_code > 0 and key_code not in self._keys and
-                             event.VirtualKeyCode == win32con.VK_MENU)):
+                    if (event.KeyDown or (key_code > 0 and key_code not in self._keys
+                                          and event.VirtualKeyCode == win32con.VK_MENU)):
                         # Record any keys that were pressed.
                         if event.KeyDown:
                             self._keys.add(key_code)
@@ -2099,13 +2185,11 @@ if sys.platform == "win32":
                         # If the user decided not to be cross-platform, so be
                         # it, otherwise map some standard bindings for extended
                         # keys.
-                        if (self._map_all and
-                                event.VirtualKeyCode in self._EXTRA_KEY_MAP):
+                        if (self._map_all and event.VirtualKeyCode in self._EXTRA_KEY_MAP):
                             key_code = self._EXTRA_KEY_MAP[event.VirtualKeyCode]
                         else:
-                            if (event.VirtualKeyCode == win32con.VK_TAB and
-                                    event.ControlKeyState &
-                                    win32con.SHIFT_PRESSED):
+                            if (event.VirtualKeyCode == win32con.VK_TAB and event.ControlKeyState
+                                    & win32con.SHIFT_PRESSED):
                                 key_code = Screen.KEY_BACK_TAB
 
                         # Don't return anything if we didn't have a valid
@@ -2121,23 +2205,18 @@ if sys.platform == "win32":
 
                 elif event.EventType == win32console.MOUSE_EVENT:
                     # Translate into a MouseEvent object.
-                    logger.debug("Processing mouse: %d, %d",
-                                 event.MousePosition.X, event.MousePosition.Y)
+                    logger.debug("Processing mouse: %d, %d", event.MousePosition.X, event.MousePosition.Y)
                     button = 0
                     if event.EventFlags == 0:
                         # Button pressed - translate it.
-                        if (event.ButtonState &
-                                win32con.FROM_LEFT_1ST_BUTTON_PRESSED != 0):
+                        if event.ButtonState & win32con.FROM_LEFT_1ST_BUTTON_PRESSED != 0:
                             button |= MouseEvent.LEFT_CLICK
-                        if (event.ButtonState &
-                                win32con.RIGHTMOST_BUTTON_PRESSED != 0):
+                        if event.ButtonState & win32con.RIGHTMOST_BUTTON_PRESSED != 0:
                             button |= MouseEvent.RIGHT_CLICK
                     elif event.EventFlags & win32con.DOUBLE_CLICK != 0:
                         button |= MouseEvent.DOUBLE_CLICK
 
-                    return MouseEvent(event.MousePosition.X,
-                                      event.MousePosition.Y,
-                                      button)
+                    return MouseEvent(event.MousePosition.X, event.MousePosition.Y, button)
 
             # If we get here, we've fully processed the event queue and found
             # nothing interesting.
@@ -2168,8 +2247,7 @@ if sys.platform == "win32":
             # Change attribute first as this will reset colours when swapping
             # modes.
             if colour != self._colour or attr != self._attr or self._bg != bg:
-                new_attr = self._ATTRIBUTES[attr](
-                    self._COLOURS[colour] + self._BG_COLOURS[bg])
+                new_attr = self._ATTRIBUTES[attr](self._COLOURS[colour] + self._BG_COLOURS[bg])
                 self._stdout.SetConsoleTextAttribute(new_attr)
                 self._attr = attr
                 self._colour = colour
@@ -2189,8 +2267,7 @@ if sys.platform == "win32":
             try:
                 # Move the cursor if necessary
                 if x != self._cur_x or y != self._cur_y:
-                    self._stdout.SetConsoleCursorPosition(
-                        win32console.PyCOORDType(x, y))
+                    self._stdout.SetConsoleCursorPosition(win32console.PyCOORDType(x, y))
 
                 # Print the text at the required location and update the current
                 # position.
@@ -2219,11 +2296,9 @@ if sys.platform == "win32":
             """
             # Scroll the visible screen up by one line
             info = self._stdout.GetConsoleScreenBufferInfo()['Window']
-            rectangle = win32console.PySMALL_RECTType(
-                info.Left, info.Top + lines, info.Right, info.Bottom)
+            rectangle = win32console.PySMALL_RECTType(info.Left, info.Top + lines, info.Right, info.Bottom)
             new_pos = win32console.PyCOORDType(0, info.Top)
-            self._stdout.ScrollConsoleScreenBuffer(
-                rectangle, None, new_pos, " ", 0)
+            self._stdout.ScrollConsoleScreenBuffer(rectangle, None, new_pos, " ", 0)
 
         def _clear(self):
             """
@@ -2233,12 +2308,9 @@ if sys.platform == "win32":
             width = info.Right - info.Left + 1
             height = info.Bottom - info.Top + 1
             box_size = width * height
-            self._stdout.FillConsoleOutputAttribute(
-                0, box_size, win32console.PyCOORDType(0, 0))
-            self._stdout.FillConsoleOutputCharacter(
-                " ", box_size, win32console.PyCOORDType(0, 0))
-            self._stdout.SetConsoleCursorPosition(
-                win32console.PyCOORDType(0, 0))
+            self._stdout.FillConsoleOutputAttribute(0, box_size, win32console.PyCOORDType(0, 0))
+            self._stdout.FillConsoleOutputCharacter(" ", box_size, win32console.PyCOORDType(0, 0))
+            self._stdout.SetConsoleCursorPosition(win32console.PyCOORDType(0, 0))
 
         def set_title(self, title):
             """
@@ -2308,8 +2380,12 @@ else:
             # there's no translation for them either.
         }
 
-        def __init__(self, win, height=None, catch_interrupt=False,
-                     unicode_aware=False):
+        def __init__(
+                self,
+                win: Any,  # Pypy uses different curses definitions
+                height: Optional[int] = None,
+                catch_interrupt: bool = False,
+                unicode_aware: Optional[bool] = False):
             """
             :param win: The window object as returned by the curses wrapper method.
             :param height: The height of the screen buffer to be used (for teesting only).
@@ -2322,14 +2398,12 @@ else:
                     encoding = getlocale()[1]
                 except ValueError:
                     encoding = os.environ.get("LC_CTYPE")
-                unicode_aware = (encoding is not None and
-                                 encoding.lower() == "utf-8")
+                unicode_aware = (encoding is not None and encoding.lower() == "utf-8")
 
             # Save off the screen details.
-            super().__init__(
-                win.getmaxyx()[0], win.getmaxyx()[1], height, unicode_aware)
+            super().__init__(win.getmaxyx()[0], win.getmaxyx()[1], height, unicode_aware)
             self._screen = win
-            self._screen.keypad(1)
+            self._screen.keypad(True)
 
             # Set up basic colour schemes.
             self.colours = curses.COLORS
@@ -2338,7 +2412,7 @@ else:
             curses.curs_set(0)
 
             # Non-blocking key checks.
-            self._screen.nodelay(1)
+            self._screen.nodelay(True)
 
             # Store previous handlers for restoration at close
             self._signal_state = _SignalState()
@@ -2357,34 +2431,32 @@ else:
                 self._signal_state.set(signal.SIGTSTP, self._catch_interrupt)
 
             # Enable mouse events
-            curses.mousemask(curses.ALL_MOUSE_EVENTS |
-                             curses.REPORT_MOUSE_POSITION)
+            curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
 
             # Lookup the necessary escape codes in the terminfo database.
-            self._move_y_x = curses.tigetstr("cup")
-            self._up_line = curses.tigetstr("ri").decode("utf-8")
-            self._down_line = curses.tigetstr("ind").decode("utf-8")
-            self._fg_color = curses.tigetstr("setaf")
-            self._bg_color = curses.tigetstr("setab")
-            self._default_colours = curses.tigetstr("op")
-            if self._default_colours:
-                self._default_colours = self._default_colours.decode("utf-8")
-            self._clear_line = curses.tigetstr("el").decode("utf-8")
+            self._move_y_x = cast(bytes, curses.tigetstr("cup"))
+            self._up_line = cast(bytes, curses.tigetstr("ri")).decode("utf-8")
+            self._down_line = cast(bytes, curses.tigetstr("ind")).decode("utf-8")
+            self._fg_color = cast(bytes, curses.tigetstr("setaf"))
+            self._bg_color = cast(bytes, curses.tigetstr("setab"))
+            temp = curses.tigetstr("op")
+            self._default_colours = None if temp is None else cast(bytes, temp).decode("utf-8")
+            self._clear_line = cast(bytes, curses.tigetstr("el")).decode("utf-8")
             if curses.tigetflag("hs"):
-                self._start_title = curses.tigetstr("tsl").decode("utf-8")
-                self._end_title = curses.tigetstr("fsl").decode("utf-8")
+                self._start_title: Optional[str] = cast(bytes, curses.tigetstr("tsl")).decode("utf-8")
+                self._end_title: Optional[str] = cast(bytes, curses.tigetstr("fsl")).decode("utf-8")
             else:
                 self._start_title = self._end_title = None
-            self._a_normal = curses.tigetstr("sgr0").decode("utf-8")
-            self._a_bold = curses.tigetstr("bold").decode("utf-8")
-            self._a_reverse = curses.tigetstr("rev").decode("utf-8")
-            self._a_underline = curses.tigetstr("smul").decode("utf-8")
-            self._clear_screen = curses.tigetstr("clear").decode("utf-8")
+            self._a_normal = cast(bytes, curses.tigetstr("sgr0")).decode("utf-8")
+            self._a_bold = cast(bytes, curses.tigetstr("bold")).decode("utf-8")
+            self._a_reverse = cast(bytes, curses.tigetstr("rev")).decode("utf-8")
+            self._a_underline = cast(bytes, curses.tigetstr("smul")).decode("utf-8")
+            self._clear_screen = cast(bytes, curses.tigetstr("clear")).decode("utf-8")
 
             # Look for a mismatch between the kernel terminal and the terminfo
             # database for backspace.  Fix up keyboard mappings if needed.
             try:
-                kbs = curses.tigetstr("kbs").decode("utf-8")
+                kbs = cast(bytes, curses.tigetstr("kbs")).decode("utf-8")
                 tbs = termios.tcgetattr(sys.stdin)[6][termios.VERASE]
                 if tbs != kbs:
                     self._KEY_MAP[ord(tbs)] = Screen.KEY_BACK
@@ -2407,7 +2479,7 @@ else:
             # high level buffers now.
             self._screen.refresh()
 
-        def close(self, restore=True):
+        def close(self, restore: bool = True):
             """
             Close down this Screen and tidy up the environment as required.
 
@@ -2415,7 +2487,7 @@ else:
             """
             self._signal_state.restore()
             if restore:
-                self._screen.keypad(0)
+                self._screen.keypad(False)
                 curses.echo()
                 # Shouldn't fail on real systems.  This code is for running tests in CI pipelines.
                 try:
@@ -2428,7 +2500,7 @@ else:
                     pass
 
         @staticmethod
-        def _safe_write(msg):
+        def _safe_write(msg: str):
             """
             Safe write to screen - catches IOErrors on screen resize.
 
@@ -2457,7 +2529,7 @@ else:
             """
             self.force_update(full_refresh=True)
 
-        def _scroll(self, lines):
+        def _scroll(self, lines: int):
             """
             Scroll the window up or down.
 
@@ -2504,7 +2576,7 @@ else:
             elif signal_no == signal.SIGTSTP:
                 curses.ungetch(26)
 
-        def get_event(self):
+        def get_event(self) -> Optional[Event]:
             """
             Check for an event without waiting.
             """
@@ -2523,11 +2595,9 @@ else:
                     buttons = 0
                     # Some Linux modes only report clicks, so check for any
                     # button down or click events.
-                    if (bstate & curses.BUTTON1_PRESSED != 0 or
-                            bstate & curses.BUTTON1_CLICKED != 0):
+                    if (bstate & curses.BUTTON1_PRESSED != 0 or bstate & curses.BUTTON1_CLICKED != 0):
                         buttons |= MouseEvent.LEFT_CLICK
-                    if (bstate & curses.BUTTON3_PRESSED != 0 or
-                            bstate & curses.BUTTON3_CLICKED != 0):
+                    if (bstate & curses.BUTTON3_PRESSED != 0 or bstate & curses.BUTTON3_CLICKED != 0):
                         buttons |= MouseEvent.RIGHT_CLICK
                     if bstate & curses.BUTTON1_DOUBLE_CLICKED != 0:
                         buttons |= MouseEvent.DOUBLE_CLICK
@@ -2540,8 +2610,7 @@ else:
                         if key & 0xC0 == 0xC0:
                             self._bytes_to_return = struct.pack(b"B", key)
                             self._bytes_to_read = bin(key)[2:].index("0") - 1
-                            logger.debug("Byte stream: %d bytes left",
-                                         self._bytes_to_read)
+                            logger.debug("Byte stream: %d bytes left", self._bytes_to_read)
                             continue
 
                         # Process unicode bytestream if still expecting data.
@@ -2568,7 +2637,7 @@ else:
 
             return None
 
-        def has_resized(self):
+        def has_resized(self) -> bool:
             """
             Check whether the screen has been re-sized.
             """
@@ -2576,7 +2645,7 @@ else:
             self._re_sized = False
             return re_sized
 
-        def _change_colours(self, colour, attr, bg):
+        def _change_colours(self, colour: int, attr: int, bg: int):
             """
             Change current colour if required.
 
@@ -2606,15 +2675,13 @@ else:
 
             # Now swap colours if required.
             if colour != self._colour:
-                self._safe_write(curses.tparm(
-                    self._fg_color, colour).decode("utf-8"))
+                self._safe_write(curses.tparm(self._fg_color, colour).decode("utf-8"))
                 self._colour = colour
             if bg != self._bg:
-                self._safe_write(curses.tparm(
-                    self._bg_color, bg).decode("utf-8"))
+                self._safe_write(curses.tparm(self._bg_color, bg).decode("utf-8"))
                 self._bg = bg
 
-        def _print_at(self, text, x, y, width):
+        def _print_at(self, text: str, x: int, y: int, width: int):
             """
             Print string at the required location.
 
@@ -2641,7 +2708,7 @@ else:
             self._cur_x = x + width
             self._cur_y = y
 
-        def wait_for_input(self, timeout):
+        def wait_for_input(self, timeout: float):
             """
             Wait until there is some input or the timeout is hit.
 
@@ -2653,7 +2720,7 @@ else:
                 # Any error will almost certainly result in a a Screen.  Ignore.
                 pass
 
-        def set_title(self, title):
+        def set_title(self, title: str):
             """
             Set the title for this terminal/console session.  This will
             typically change the text displayed in the window title bar.
@@ -2674,7 +2741,7 @@ else:
         def __init__(self):
             self._old_signal_states = []
 
-        def set(self, signalnum, handler):
+        def set(self, signalnum: signal.Signals, handler: Callable):
             """
             Set signal handler and record their previous values.
 
