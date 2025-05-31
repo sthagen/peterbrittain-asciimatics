@@ -698,19 +698,30 @@ class TestScreen(unittest.TestCase):
                 event.ButtonState |= win32con.FROM_LEFT_1ST_BUTTON_PRESSED
             if button & MouseEvent.RIGHT_CLICK != 0:
                 event.ButtonState |= win32con.RIGHTMOST_BUTTON_PRESSED
+            if button & MouseEvent.SCROLL_UP != 0:
+                event.EventFlags |= win32con.MOUSE_WHEELED
+                event.ButtonState = 120
+            if button & MouseEvent.SCROLL_DOWN != 0:
+                event.EventFlags |= win32con.MOUSE_WHEELED
+                event.ButtonState = -120
             if button & MouseEvent.DOUBLE_CLICK != 0:
                 event.EventFlags |= win32con.DOUBLE_CLICK
             screen._stdin.WriteConsoleInput([event])
         else:
             # Curses doesn't like no value in some cases - use a dummy button
             # click which we don't use instead.
-            bstate = curses.BUTTON4_CLICKED
+            bstate = curses.BUTTON2_CLICKED
             if button & MouseEvent.LEFT_CLICK != 0:
                 bstate |= curses.BUTTON1_CLICKED
             if button & MouseEvent.RIGHT_CLICK != 0:
                 bstate |= curses.BUTTON3_CLICKED
             if button & MouseEvent.DOUBLE_CLICK != 0:
                 bstate |= curses.BUTTON1_DOUBLE_CLICKED
+            if sys.platform != "win32" and hasattr(curses, "BUTTON5_PRESSED"):
+                if button & MouseEvent.SCROLL_UP != 0:
+                    bstate |= curses.BUTTON4_CLICKED
+                if button & MouseEvent.SCROLL_DOWN != 0:
+                    bstate |= curses.BUTTON5_CLICKED
             curses.ungetmouse(0, x, y, 0, bstate)
 
     def test_key_input(self):
@@ -786,6 +797,24 @@ class TestScreen(unittest.TestCase):
             self.assertEqual(ev.y, 0)
             self.assertEqual(ev.buttons, MouseEvent.DOUBLE_CLICK)
             self.assertIsNone(screen.get_event())
+
+            # Not all curses versions support scrolling...
+            if sys.platform == "win32" or hasattr(curses, "BUTTON5_PRESSED"):
+                # Check scroll up
+                self._inject_mouse(screen, 1, 1, MouseEvent.SCROLL_UP)
+                ev = screen.get_event()
+                self.assertEqual(ev.x, 1)
+                self.assertEqual(ev.y, 1)
+                self.assertEqual(ev.buttons, MouseEvent.SCROLL_UP)
+                self.assertIsNone(screen.get_event())
+
+                # Check scroll up
+                self._inject_mouse(screen, 1, 1, MouseEvent.SCROLL_DOWN)
+                ev = screen.get_event()
+                self.assertEqual(ev.x, 1)
+                self.assertEqual(ev.y, 1)
+                self.assertEqual(ev.buttons, MouseEvent.SCROLL_DOWN)
+                self.assertIsNone(screen.get_event())
 
         Screen.wrapper(internal_checks, height=15)
 
