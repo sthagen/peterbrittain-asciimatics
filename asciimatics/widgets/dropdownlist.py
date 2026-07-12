@@ -143,7 +143,7 @@ class DropdownList(Widget):
         # For unicode output, we need to adjust for any double width characters.
         assert self._frame
         output = _enforce_width(text, width, self._frame.canvas.unicode_aware)
-        output_tweak = wcswidth(output) - len(output)
+        output_tweak = wcswidth(str(output)) - len(output)
 
         self._frame.canvas.print_at(f"[ {output:{width - output_tweak}}]",
                                     self._x + self._offset,

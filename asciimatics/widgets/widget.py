@@ -163,7 +163,7 @@ class Widget(metaclass=ABCMeta):
         :param frame: The owning Frame.
         """
         self._frame = frame
-        self.string_len = wcswidth if self._frame.canvas.unicode_aware else len
+        self.string_len = wcswidth if self._frame.canvas.unicode_aware else len # type: ignore[assignment]
 
     def set_layout(self, x: int, y: int, offset: int, w: int, h: int):
         """
